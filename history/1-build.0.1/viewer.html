@@ -1,0 +1,4214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Editor - WRIST-Test/WRIST-WRIST-Test-Demo</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; overflow-x: hidden; }
+    ::-webkit-scrollbar { display: none; }
+
+    :root {
+      --blue-dark: rgb(30, 64, 88);
+      --grey-light: #f3f3f2;
+      --grey-mid: #8591a9;
+      --white-soft: #ffffff;
+
+      /* Viewer clamp */
+      --row-lines: 3;
+      --lh: 1.35;
+      --cell-vpad: 4px;
+
+      /* Modal */
+      --overlay-bg: rgba(0,0,0,0.5);
+      --modal-bg: #fff;
+      --modal-max-w: 900px;
+      --modal-max-h: 80vh;
+      --modal-pad: 16px;
+      --modal-radius: 10px;
+    }
+    body, input, textarea, label, button {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 14px;
+      color: var(--blue-dark);
+    }
+
+    /* Table Base */
+    table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 40px;
+    }
+    thead th {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      z-index: 2;
+      color: rgb(54, 75, 90);
+      font-weight: bold;
+      text-align: left;
+      vertical-align: middle;
+      padding: 8px;
+      border: none;
+      word-wrap: break-word;
+    }
+    tbody td {
+      border: none;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+      word-wrap: break-word;
+    }
+
+    /* Row colours */
+    tbody tr[data-depth="0"] {
+      background: #004466 !important;
+      color: #fff;
+    }
+    tbody tr:not([data-depth="0"]) {
+      background: rgba(66, 110, 168, 0.09);
+      color: #000;
+      border-top: 1px solid #ccc;
+    }
+    tbody tr + tr { border-top: 4px solid #fff; }
+    tr.clickable { cursor: pointer; }
+
+    /* Utility */
+    .sticky-header { position: sticky; top: 0; background: #fff; z-index: 2; }
+    .hidden { display: none !important; }
+    td, th { word-break: break-word; overflow-wrap: anywhere; }
+
+    /* Tree arrow */
+    .arrow { display: inline-block; width: 0.6em; margin-right: 4px; color: inherit; }
+    tr[data-has-children="true"] .arrow::before { content: "▶"; font-size: 0.8em; transition: transform 0.2s; }
+    tr.expanded .arrow::before { content: "▼"; }
+
+    /* Cardinality cell style */
+    td.cardinality { white-space: nowrap; font-family: monospace; }
+
+    /* MRO column is compact */
+    th[data-col="mro"], td[data-col="mro"] { text-align: center; vertical-align: middle; overflow: hidden; }
+    thead th[data-col="mro"] { text-align: center; }
+    tbody td:first-child { padding-left: 0 !important; text-align: center; }
+    tbody td.mro { padding-left: 0 !important; text-align: center; }
+
+    /* Uniform 3-line rows */
+    thead th, tbody td { line-height: var(--lh); }
+    tbody td .cell{
+      display: block;
+      overflow: hidden;
+      max-height: calc(var(--row-lines) * 1em * var(--lh));
+      position: relative;
+    }
+    tbody tr{ height: calc(var(--row-lines) * 1em * var(--lh) + var(--cell-vpad) * 2); }
+    tbody td{ padding-top: var(--cell-vpad); padding-bottom: var(--cell-vpad); }
+
+    /* Read more link */
+    .read-more {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: 12px;
+      text-decoration: underline;
+      cursor: pointer;
+      color: #1f4e79;
+    }
+    .read-more.light { color: #1f4e79; }
+    .read-more.dark  { color: #ffffff; }
+
+    /* Legacy list styling (only used for old string valueSets) */
+    .vs-list { margin: 0; padding-left: 18px; list-style-position: outside; }
+    .vs-list li { margin: 0 0 4px 0; line-height: 1.25; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--overlay-bg);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .modal-overlay.show { display: flex; }
+
+    .modal {
+      background: var(--modal-bg);
+      max-width: var(--modal-max-w);
+      max-height: var(--modal-max-h);
+      width: calc(100vw - 40px);
+      border-radius: var(--modal-radius);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid #e5e7eb;
+      background: #f8fafc;
+    }
+    .modal-title {
+      font-weight: 600;
+      margin: 0;
+      font-size: 14px;
+    }
+    .modal-close {
+      border: none;
+      background: transparent;
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .modal-body {
+      padding: var(--modal-pad);
+      overflow: auto;
+    }
+    .modal-body :is(p, li){ line-height: 1.5; }
+    .modal-body a{ text-decoration: underline; }
+
+    .use-badge{
+      display:inline-block; margin-left:6px; padding:1px 6px; border-radius:999px;
+      font-size:12px; line-height:1.4; background:#eef2ff; color:#3730a3;
+    }
+  </style>
+<script>
+window.PREFIX_DISPLAY_MAP = {"DICOM": "DICOM", "DM\u0026D": "DM\u0026D", "FHIR": "FHIR", "IANA": "IANA Media Types", "ICD": "ICD", "LOINC": "LOINC", "NHS_DD": "NHS Data Dictionary", "NICIP": "NICIP", "OPCS": "OPCS", "PPPP": "PLACEHOLDER", "SNOMED_CT": "SNOMED CT", "UCUM": "UCUM"};
+</script>
+
+</head>
+<body>
+  
+
+  
+  
+  
+  
+
+  <div style="max-height: 95vh; overflow-x: auto; overflow-y: auto;">
+    <table>
+      <colgroup>
+        
+          
+            <col style="width: 80px">
+          
+        
+          
+            <col style="width: 159px">
+          
+        
+          
+            <col>
+          
+        
+          
+            <col style="width: 283px">
+          
+        
+          
+            <col style="width: 447px">
+          
+        
+          
+            <col style="width: 235px">
+          
+        
+          
+            <col style="width: 140px">
+          
+        
+          
+            <col style="width: 120px">
+          
+        
+          
+            <col style="width: 220px">
+          
+        
+      </colgroup>
+
+      <thead>
+        <tr class="sticky-header">
+          
+            <th data-col="mro">MRO</th>
+          
+            <th data-col="name">Name</th>
+          
+            <th data-col="description">Description</th>
+          
+            <th data-col="value_sets">Value Sets</th>
+          
+            <th data-col="implementation_guidance">Implementation Guidance</th>
+          
+            <th data-col="information_type">Information Type</th>
+          
+            <th data-col="data_type">Data Type</th>
+          
+            <th data-col="cardinality">Cardinality</th>
+          
+            <th data-col="derived_from">Derived From</th>
+          
+        </tr>
+      </thead>
+
+      <tbody>
+      
+      
+      
+        
+        
+        <tr
+          data-id="root-0"
+          data-parent-id=""
+          data-depth="0"
+          data-has-children="true"
+          class=""
+        >
+          <td class="mro">M</td>
+
+          <td class="name" style="padding-left: 0px;">
+            <span class="arrow"></span>
+            <div class="cell">Test</div>
+          </td>
+
+          <td><div class="cell" title="Test"><p>Test</p></div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "", "popUpText": "\u003cp\u003eExample\u003c/p\u003e", "prefix": "SNOMED_CT", "prefixDisplay": "SNOMED CT", "text": "12346|Test", "use": "EXAM"}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>SNOMED CT</strong> — <
+
+                    
+                      12346|Test
+                    
+                     <span class="use-badge">(EXAM)</span>
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title="Test"><p>Test</p></div></td>
+          <td><div class="cell">Record</div></td>
+
+          
+          
+          <td><div class="cell">Personal contacts</div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell"></div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-0-0"
+          data-parent-id="root-0"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro"></td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell"></div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">…</td>
+          <td><div class="cell"></div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-1"
+          data-parent-id=""
+          data-depth="0"
+          data-has-children="true"
+          class=""
+        >
+          <td class="mro">M</td>
+
+          <td class="name" style="padding-left: 0px;">
+            <span class="arrow"></span>
+            <div class="cell">Person demographics</div>
+          </td>
+
+          <td><div class="cell" title="The person&#39;s details and contact information."><p>The person's details and contact information.</p></div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title="The mandatory information in this section is person’s name, date of birth and address. There can be multiple addresses associated with a person including temporary and correspondence addresses. These are stored on the PDS. Note that the Individual requirements section includes specific elements for accessible information requirements to support communication. It is recognised that some of the elements in this section are currently shared in a more granular way than currently defined in this information model. PRSB intends to address this in a later release of the information model."><p>The mandatory information in this section is person’s name, date of birth and address. There can be multiple addresses associated with a person including temporary and correspondence addresses. These are stored on the PDS. </p><p><br></p><p> Note that the Individual requirements section includes specific elements for accessible information requirements to support communication. It is recognised that some of the elements in this section are currently shared in a more granular way than currently defined in this information model. PRSB intends to address this in a later release of the information model.</p></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">1…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-1-0"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">M</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Person name</div>
+          </td>
+
+          <td><div class="cell" title="Details of the person&#39;s name">Details of the person's name</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">1…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-1-0-0"
+          data-parent-id="root-1-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">M</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Person first name</div>
+          </td>
+
+          <td><div class="cell" title="The first name(s) of the person. This includes middle names.">The first name(s) of the person. This includes middle names.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/person_given_name.html?hl=person%2Cgiven%2Cname", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person given name", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/person_given_name.html?hl=person%2Cgiven%2Cname" target="_blank" rel="noopener">
+                        Person given name
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">1…*</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person first name@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-0-1"
+          data-parent-id="root-1-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">M</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Person family name</div>
+          </td>
+
+          <td><div class="cell" title="The family name or surname of the person">The family name or surname of the person</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/person_family_name.html", "popUpText": "\u003cbr clear=\"none\"/\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person family name", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/person_family_name.html" target="_blank" rel="noopener">
+                        Person family name
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">1…*</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person family name@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-0-2"
+          data-parent-id="root-1-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Person preferred name</div>
+          </td>
+
+          <td><div class="cell" title="The name by which a person wishes to be addressed. The preferred name volunteered by the person or a preferred name given by PDS that the person has asked to be called by.">The name by which a person wishes to be addressed. The preferred name volunteered by the person or a preferred name given by PDS that the person has asked to be called by.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/person_full_name.html?hl=person%2Cname", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person full name", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/person_full_name.html?hl=person%2Cname" target="_blank" rel="noopener">
+                        Person full name
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person preferred name@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-0-3"
+          data-parent-id="root-1-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Title</div>
+          </td>
+
+          <td><div class="cell" title="Person&#39;s title">Person's title</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/data_field_notes/p/pers/person_title_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person title", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://www.datadictionary.nhs.uk/data_dictionary/data_field_notes/p/pers/person_title_de.asp?shownav=1" target="_blank" rel="noopener">
+                        Person title
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Title@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-0-4"
+          data-parent-id="root-1-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Person name suffix</div>
+          </td>
+
+          <td><div class="cell" title="A textual suffix that may be added to the end of a PERSON&#39;s name, for example, OBE, MBE, BSc, JP, GM">A textual suffix that may be added to the end of a PERSON's name, for example, OBE, MBE, BSc, JP, GM</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/person_name_suffix.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person suffix", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/person_name_suffix.html" target="_blank" rel="noopener">
+                        Person suffix
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…*</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person name suffix@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-0-5"
+          data-parent-id="root-1-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Person full name</div>
+          </td>
+
+          <td><div class="cell" title="The full name of the person in text representation.">The full name of the person in text representation.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/person_full_name.html?hl=person%2Cname", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Patient full name", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/person_full_name.html?hl=person%2Cname" target="_blank" rel="noopener">
+                        Patient full name
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person full name@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-1-1"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Gender</div>
+          </td>
+
+          <td><div class="cell" title="The person&#39;s stated gender.">The person's stated gender.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/person_stated_gender_code.html?hl=person%2Cstated%2Cgender%2Ccode", "popUpText": "\u003cbr clear=\"none\"/\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person stated gender code", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/person_stated_gender_code.html?hl=person%2Cstated%2Cgender%2Ccode" target="_blank" rel="noopener">
+                        Person stated gender code
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Gender@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-2"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Ethnicity</div>
+          </td>
+
+          <td><div class="cell" title="The ethnicity of the person as specified by the person.">The ethnicity of the person as specified by the person.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/ethnic_category.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Ethnic category", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/ethnic_category.html" target="_blank" rel="noopener">
+                        Ethnic category
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Ethnicity@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-3"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Religion</div>
+          </td>
+
+          <td><div class="cell" title="The religious affiliation as specified by the person.">The religious affiliation as specified by the person.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://termbrowser.nhs.uk/?perspective=full\u0026conceptId1=999000531000000100\u0026edition=uk-edition\u0026server=https://termbrowser.nhs.uk/sct-browser-api/snomed\u0026langRefset=999001261000000100,999000691000001104", "popUpText": "\u003cbr clear=\"none\"/\u003e\n                    \u003c/div\u003e", "prefix": "SNOMED_CT", "prefixDisplay": "SNOMED CT", "text": "Religion", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>SNOMED CT</strong> — <
+
+                    
+                      <a href="https://termbrowser.nhs.uk/?perspective=full&amp;conceptId1=999000531000000100&amp;edition=uk-edition&amp;server=https://termbrowser.nhs.uk/sct-browser-api/snomed&amp;langRefset=999001261000000100,999000691000001104" target="_blank" rel="noopener">
+                        Religion
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Religion@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-4"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro"></td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Sex</div>
+          </td>
+
+          <td><div class="cell" title="The person’s phenotypic sex. Determines how the person will be treated clinically.">The person’s phenotypic sex. Determines how the person will be treated clinically.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://www.datadictionary.nhs.uk/data_elements/person_phenotypic_sex.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "person phenotypic sex", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://www.datadictionary.nhs.uk/data_elements/person_phenotypic_sex.html" target="_blank" rel="noopener">
+                        person phenotypic sex
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Sex@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-5"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">NHS number</div>
+          </td>
+
+          <td><div class="cell" title="The unique identifier for a person within the NHS in England and Wales.">The unique identifier for a person within the NHS in England and Wales.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/nhs_number.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "NHS number", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/nhs_number.html" target="_blank" rel="noopener">
+                        NHS number
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/NHS number@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-6"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">NHS number status indicator</div>
+          </td>
+
+          <td><div class="cell" title="Provides an indication of the reliability of an NHS Number.">Provides an indication of the reliability of an NHS Number.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/attributes/n/nhs/nhs_number_status_indicator_code_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "NHS number status indicator", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://www.datadictionary.nhs.uk/data_dictionary/attributes/n/nhs/nhs_number_status_indicator_code_de.asp?shownav=1" target="_blank" rel="noopener">
+                        NHS number status indicator
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/NHS number status indicator@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-7"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Other identifier</div>
+          </td>
+
+          <td><div class="cell" title="Country specific or local identifier, e.g. Community Health Index (CHI) in Scotland.">Country specific or local identifier, e.g. Community Health Index (CHI) in Scotland.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/local_patient_identifier__extended_.html?hl=local%2Cpatient%2Cidentifier%2Cextended", "popUpText": ", \u003ca class=\"\" href=\"https://datadictionary.nhs.uk/data_elements/health_and_care_number.html\" target=\"\" title=\"\"\u003eHealth and care number (NI only)\u003c/a\u003e,\u00a0\u003ca class=\"\" href=\"https://datadictionary.nhs.uk/data_elements/community_health_index_number.html\" target=\"\" title=\"\"\u003eCommunity health index number\u003c/a\u003e\u00a0(Scotland only)\u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Local patient identifier(extended)", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/local_patient_identifier__extended_.html?hl=local%2Cpatient%2Cidentifier%2Cextended" target="_blank" rel="noopener">
+                        Local patient identifier(extended)
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…*</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Other identifier@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-8"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">M</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Person&#39;s address</div>
+          </td>
+
+          <td><div class="cell" title="Person’s usual place of residence, and where relevant temporary and correspondence addresses.">Person’s usual place of residence, and where relevant temporary and correspondence addresses.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">1…*</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s address@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-1-8-0"
+          data-parent-id="root-1-8"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">M</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Address line 1</div>
+          </td>
+
+          <td><div class="cell" title="Person&#39;s first line of address.">Person's first line of address.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e\n                        \u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 1", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/patient_usual_address.html" target="_blank" rel="noopener">
+                        Address line 1
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">1…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s address/Address line 1@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-8-1"
+          data-parent-id="root-1-8"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Address line 2</div>
+          </td>
+
+          <td><div class="cell" title="Person&#39;s second line of address.">Person's second line of address.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e\n                        \u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 2", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/patient_usual_address.html" target="_blank" rel="noopener">
+                        Address line 2
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s address/Address line 2@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-8-2"
+          data-parent-id="root-1-8"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Address line 3</div>
+          </td>
+
+          <td><div class="cell" title="Person&#39;s third line of address.">Person's third line of address.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 3", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/patient_usual_address.html" target="_blank" rel="noopener">
+                        Address line 3
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s address/Address line 3@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-8-3"
+          data-parent-id="root-1-8"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Address line 4</div>
+          </td>
+
+          <td><div class="cell" title="Person&#39;s fourth line of address.">Person's fourth line of address.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e\n                        \u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 4", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/patient_usual_address.html" target="_blank" rel="noopener">
+                        Address line 4
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s address/Address line 4@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-8-4"
+          data-parent-id="root-1-8"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Address line 5</div>
+          </td>
+
+          <td><div class="cell" title="Person&#39;s fifth line of address.">Person's fifth line of address.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 5", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/patient_usual_address.html" target="_blank" rel="noopener">
+                        Address line 5
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s address/Address line 5@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-8-5"
+          data-parent-id="root-1-8"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Postcode</div>
+          </td>
+
+          <td><div class="cell" title="The person&#39;s postcode.">The person's postcode.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/postcode_of_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Postcode of usual address", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/postcode_of_usual_address.html" target="_blank" rel="noopener">
+                        Postcode of usual address
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s address/Postcode@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-8-6"
+          data-parent-id="root-1-8"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Address type</div>
+          </td>
+
+          <td><div class="cell" title="The type of address e.g. Main address, Temp address">The type of address e.g. Main address, Temp address</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/attributes/a/add/address_association_type_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address association type", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://www.datadictionary.nhs.uk/data_dictionary/attributes/a/add/address_association_type_de.asp?shownav=1" target="_blank" rel="noopener">
+                        Address association type
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s address/Address type@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-1-9"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Person&#39;s contact details</div>
+          </td>
+
+          <td><div class="cell" title="Details of the person&#39;s contact information.">Details of the person's contact information.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-1-9-0"
+          data-parent-id="root-1-9"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Preferred contact method</div>
+          </td>
+
+          <td><div class="cell" title="Preferred contact method, e.g. email, letter, phone, text message etc.">Preferred contact method, e.g. email, letter, phone, text message etc.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/attributes/c/com/communication_contact_method_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Communication contact method", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://www.datadictionary.nhs.uk/data_dictionary/attributes/c/com/communication_contact_method_de.asp?shownav=1" target="_blank" rel="noopener">
+                        Communication contact method
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Preferred contact method@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-9-1"
+          data-parent-id="root-1-9"
+          data-depth="2"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Person&#39;s telephone number details</div>
+          </td>
+
+          <td><div class="cell" title="The person&#39;s telephone number details">The person's telephone number details</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…*</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Person&#39;s telephone number details@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-1-9-1-0"
+          data-parent-id="root-1-9-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Person&#39;s telephone number</div>
+          </td>
+
+          <td><div class="cell" title="The person&#39;s telephone number">The person's telephone number</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/uk_telephone_number.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "UK telephone number", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/uk_telephone_number.html" target="_blank" rel="noopener">
+                        UK telephone number
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Person&#39;s telephone number details/Person&#39;s telephone number@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-9-1-1"
+          data-parent-id="root-1-9-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Person&#39;s telephone number type</div>
+          </td>
+
+          <td><div class="cell" title="The contact type e.g. home, mobile">The contact type e.g. home, mobile</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "http://hl7.org/fhir/stu3/codesystem-contact-point-use.html", "popUpText": "", "prefix": "FHIR", "prefixDisplay": "FHIR", "text": "Contact point use", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>FHIR</strong> — <
+
+                    
+                      <a href="http://hl7.org/fhir/stu3/codesystem-contact-point-use.html" target="_blank" rel="noopener">
+                        Contact point use
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Person&#39;s telephone number details/Person&#39;s telephone number type@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-9-1-2"
+          data-parent-id="root-1-9-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Preference of telephone number</div>
+          </td>
+
+          <td><div class="cell" title="The preferred order of use for the telephone number">The preferred order of use for the telephone number</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Person&#39;s telephone number details/Preference of telephone number@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-1-9-2"
+          data-parent-id="root-1-9"
+          data-depth="2"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Person&#39;s email address details</div>
+          </td>
+
+          <td><div class="cell" title="Details of the person&#39;s email address">Details of the person's email address</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…*</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Person&#39;s email address details@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-1-9-2-0"
+          data-parent-id="root-1-9-2"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Person&#39;s email address</div>
+          </td>
+
+          <td><div class="cell" title="Email address of the person.">Email address of the person.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Person&#39;s email address details/Person&#39;s email address@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-9-2-1"
+          data-parent-id="root-1-9-2"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Person&#39;s email address type</div>
+          </td>
+
+          <td><div class="cell" title="The type of email address, home, work">The type of email address, home, work</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "http://hl7.org/fhir/stu3/codesystem-contact-point-use.html", "popUpText": "", "prefix": "FHIR", "prefixDisplay": "FHIR", "text": "Contact point use", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>FHIR</strong> — <
+
+                    
+                      <a href="http://hl7.org/fhir/stu3/codesystem-contact-point-use.html" target="_blank" rel="noopener">
+                        Contact point use
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Person&#39;s email address details/Person&#39;s email address type@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-9-2-2"
+          data-parent-id="root-1-9-2"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Preference of email address</div>
+          </td>
+
+          <td><div class="cell" title="The preferred order of use of email address">The preferred order of use of email address</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Person&#39;s email address details/Preference of email address@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-1-9-3"
+          data-parent-id="root-1-9"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Other contact information</div>
+          </td>
+
+          <td><div class="cell" title="Contact details via fax, sms, url">Contact details via fax, sms, url</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/attributes/communication_contact_string.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Communication contact string", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/attributes/communication_contact_string.html" target="_blank" rel="noopener">
+                        Communication contact string
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Person&#39;s contact details/Other contact information@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-1-10"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Photograph</div>
+          </td>
+
+          <td><div class="cell" title="A photograph of the person for identification and to show what the person looks like normally.">A photograph of the person for identification and to show what the person looks like normally.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Photograph@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-11"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro"></td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Place of birth</div>
+          </td>
+
+          <td><div class="cell" title="The country of birth of the person.">The country of birth of the person.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/attributes/c/cou/country_code_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Country code (birth)", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://www.datadictionary.nhs.uk/data_dictionary/attributes/c/cou/country_code_de.asp?shownav=1" target="_blank" rel="noopener">
+                        Country code (birth)
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Place of birth@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-12"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro"></td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Marital status</div>
+          </td>
+
+          <td><div class="cell" title="An indicator to identify the legal marital status of the person.">An indicator to identify the legal marital status of the person.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://www.datadictionary.nhs.uk/data_elements/person_marital_status.html?hl=marital%2Cstatus", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person marital status", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://www.datadictionary.nhs.uk/data_elements/person_marital_status.html?hl=marital%2Cstatus" target="_blank" rel="noopener">
+                        Person marital status
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Marital status@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-13"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Immigration status</div>
+          </td>
+
+          <td><div class="cell" title="Include details of the immigration status of the person, their permissions to live and receive care and support in the UK e.g. asylum seeker, indefinite leave to remain in the UK. Include start date, end date and any comments.">Include details of the immigration status of the person, their permissions to live and receive care and support in the UK e.g. asylum seeker, indefinite leave to remain in the UK. Include start date, end date and any comments.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-1-13-0"
+          data-parent-id="root-1-13"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Immigration status</div>
+          </td>
+
+          <td><div class="cell" title="Details of the immigration status of the person, their permissions to live and receive care and support in the UK e.g. asylum seeker, indefinite leave to remain in the UK.">Details of the immigration status of the person, their permissions to live and receive care and support in the UK e.g. asylum seeker, indefinite leave to remain in the UK.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status/Immigration status@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-13-1"
+          data-parent-id="root-1-13"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Start date</div>
+          </td>
+
+          <td><div class="cell" title="Start date of immigration status">Start date of immigration status</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status/Start date@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-13-2"
+          data-parent-id="root-1-13"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">End date</div>
+          </td>
+
+          <td><div class="cell" title="End date of immigration status">End date of immigration status</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status/End date@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-13-3"
+          data-parent-id="root-1-13"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Comment</div>
+          </td>
+
+          <td><div class="cell" title="Relevant comments about the person&#39;s immigration status">Relevant comments about the person's immigration status</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status/Comment@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-1-14"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Organ and tissue donation</div>
+          </td>
+
+          <td><div class="cell" title="Whether the person has given consent for organ and/or tissue donation or opted out of automatic donation where applicable. This is information provided by the national register.">Whether the person has given consent for organ and/or tissue donation or opted out of automatic donation where applicable. This is information provided by the national register.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Organ and tissue donation@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-1-15"
+          data-parent-id="root-1"
+          data-depth="1"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Overseas visitor status</div>
+          </td>
+
+          <td><div class="cell" title="The charging category relating to an overseas visitor.">The charging category relating to an overseas visitor.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/overseas_visitor_charging_category.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Overseas visitor charging catergory", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/overseas_visitor_charging_category.html" target="_blank" rel="noopener">
+                        Overseas visitor charging catergory
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Person demographics/Overseas visitor status@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-2"
+          data-parent-id=""
+          data-depth="0"
+          data-has-children="true"
+          class=""
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 0px;">
+            <span class="arrow"></span>
+            <div class="cell">Problem list</div>
+          </td>
+
+          <td><div class="cell" title="A summary of the problems that require investigation or treatment."><p>A summary of the problems that require investigation or treatment.</p></div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""><p><br></p></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-2-0"
+          data-parent-id="root-2"
+          data-depth="1"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 20px;">
+            <span class="arrow"></span>
+            <div class="cell">Problem list record entry</div>
+          </td>
+
+          <td><div class="cell" title="This is a problem list record entry. There may be 0 to many record entries under problem list. Each record entry is made up of a number of elements or data items.">This is a problem list record entry.  <br clear="none"/> 
+                     <br clear="none"/> There may be 0 to many record entries under problem list.  <br clear="none"/> 
+                     <br clear="none"/> Each record entry is made up of a number of elements or data items.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…*</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-2-0-0"
+          data-parent-id="root-2-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Date</div>
+          </td>
+
+          <td><div class="cell" title="The date the problem was identified.">The date the problem was identified.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Date@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-1"
+          data-parent-id="root-2-0"
+          data-depth="2"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Performing professional</div>
+          </td>
+
+          <td><div class="cell" title="The professional who identified the problem.">The professional who identified the problem.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-2-0-1-0"
+          data-parent-id="root-2-0-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Name</div>
+          </td>
+
+          <td><div class="cell" title="The name of the professional.">The name of the professional.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Name@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-1-1"
+          data-parent-id="root-2-0-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Role</div>
+          </td>
+
+          <td><div class="cell" title="The role the professional has in relation to the person e.g. GP, physiotherapist, community nurse, social worker etc">The role the professional has in relation to the person e.g. GP, physiotherapist, community nurse, social worker etc</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://simplifier.net/ukcore/codesystem-ukcore-sdsjobrolename", "popUpText": "", "prefix": "FHIR", "prefixDisplay": "FHIR", "text": "SDSjobroletype", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>FHIR</strong> — <
+
+                    
+                      <a href="https://simplifier.net/ukcore/codesystem-ukcore-sdsjobrolename" target="_blank" rel="noopener">
+                        SDSjobroletype
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Role@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-1-2"
+          data-parent-id="root-2-0-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Grade</div>
+          </td>
+
+          <td><div class="cell" title="The grade of the professional.">The grade of the professional.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Grade@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-1-3"
+          data-parent-id="root-2-0-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Speciality</div>
+          </td>
+
+          <td><div class="cell" title="The specialty of the professional e.g. physiotherapy, oncology, mental health etc">The specialty of the professional e.g. physiotherapy, oncology, mental health etc</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/activity_treatment_function_code.html?hl=activity%2Ctreatment%2Cfunction%2Ccode", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Activity treatment function code", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/activity_treatment_function_code.html?hl=activity%2Ctreatment%2Cfunction%2Ccode" target="_blank" rel="noopener">
+                        Activity treatment function code
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Speciality@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-1-4"
+          data-parent-id="root-2-0-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Professional identifier</div>
+          </td>
+
+          <td><div class="cell" title="Professional identifier for the professional e.g. GMC number, HCPC number etc or the personal identifier used by the local organisation.">Professional identifier for the professional e.g. GMC number, HCPC number etc or the personal identifier used by the local organisation.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/professional_registration_entry_identifier.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Professional registration identifier", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/professional_registration_entry_identifier.html" target="_blank" rel="noopener">
+                        Professional registration identifier
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Professional identifier@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-1-5"
+          data-parent-id="root-2-0-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Organisation</div>
+          </td>
+
+          <td><div class="cell" title="The name of the organisation the professional works for.">The name of the organisation the professional works for.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Organisation@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-1-6"
+          data-parent-id="root-2-0-1"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Contact details</div>
+          </td>
+
+          <td><div class="cell" title="Contact details of the professional">Contact details of the professional</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/uk_telephone_number.html?hl=number", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "UK phone number", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/uk_telephone_number.html?hl=number" target="_blank" rel="noopener">
+                        UK phone number
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Contact details@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-2"
+          data-parent-id="root-2-0"
+          data-depth="2"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Location</div>
+          </td>
+
+          <td><div class="cell" title="The location the problem was identified.">The location the problem was identified.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Location@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-2-0-2-0"
+          data-parent-id="root-2-0-2"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Coded value</div>
+          </td>
+
+          <td><div class="cell" title="The coded value for location.">The coded value for location.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/nhs_business_definitions/o/organisation_data_service_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Organisation data service code", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://www.datadictionary.nhs.uk/data_dictionary/nhs_business_definitions/o/organisation_data_service_de.asp?shownav=1" target="_blank" rel="noopener">
+                        Organisation data service code
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Location/Coded value@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-2-1"
+          data-parent-id="root-2-0-2"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Free text</div>
+          </td>
+
+          <td><div class="cell" title="Free text field to be used if no code is available">Free text field to be used if no code is available</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Location/Free text@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-3"
+          data-parent-id="root-2-0"
+          data-depth="2"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">M</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Problem</div>
+          </td>
+
+          <td><div class="cell" title="A condition which needs addressing and so is important for every professional to know about when seeing the person. Problems may include diagnoses, symptoms, disabilities and social or behavioural issues">A condition which needs addressing and so is important for every professional to know about when seeing the person.  <br clear="none"/> 
+                         <br clear="none"/> Problems may include diagnoses, symptoms, disabilities and social or behavioural issues</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">1…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Problem@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-2-0-3-0"
+          data-parent-id="root-2-0-3"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Coded value</div>
+          </td>
+
+          <td><div class="cell" title="The coded value for the problem list.">The coded value for the problem list.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://termbrowser.nhs.uk/?perspective=full\u0026conceptId1=1127581000000103\u0026edition=uk-edition\u0026release=\u0026server=https://termbrowser.nhs.uk/sct-browser-api/snomed\u0026langRefset=999001261000000100,999000691000001104", "popUpText": "", "prefix": "SNOMED_CT", "prefixDisplay": "SNOMED CT", "text": "^1127581000000103 |Health issues simple reference set|", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>SNOMED CT</strong> — <
+
+                    
+                      <a href="https://termbrowser.nhs.uk/?perspective=full&amp;conceptId1=1127581000000103&amp;edition=uk-edition&amp;release=&amp;server=https://termbrowser.nhs.uk/sct-browser-api/snomed&amp;langRefset=999001261000000100,999000691000001104" target="_blank" rel="noopener">
+                        ^1127581000000103 |Health issues simple reference set|
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Problem/Coded value@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-3-1"
+          data-parent-id="root-2-0-3"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Free text</div>
+          </td>
+
+          <td><div class="cell" title="Free text field to be used if no code is available">Free text field to be used if no code is available</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Problem/Free text@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-4"
+          data-parent-id="root-2-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Onset date</div>
+          </td>
+
+          <td><div class="cell" title="A date or estimated date that the problem began">A date or estimated date that the problem began</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Onset date@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-5"
+          data-parent-id="root-2-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">End Date</div>
+          </td>
+
+          <td><div class="cell" title="The date or estimated date the problem was resolved.">The date or estimated date the problem was resolved.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/End Date@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-6"
+          data-parent-id="root-2-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Stage of disease</div>
+          </td>
+
+          <td><div class="cell" title="The stage of the disease where relevant.">The stage of the disease where relevant.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Stage of disease@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-7"
+          data-parent-id="root-2-0"
+          data-depth="2"
+          data-has-children="true"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Person completing record</div>
+          </td>
+
+          <td><div class="cell" title="Details of the person completing the record.">Details of the person completing the record.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record@2-build.2.1</div></td>
+        </tr>
+
+        
+          
+      
+        
+        
+        <tr
+          data-id="root-2-0-7-0"
+          data-parent-id="root-2-0-7"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Name</div>
+          </td>
+
+          <td><div class="cell" title="The name of the person completing the record.">The name of the person completing the record.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Name@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-7-1"
+          data-parent-id="root-2-0-7"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Role</div>
+          </td>
+
+          <td><div class="cell" title="The organisational role of the person completing record.">The organisational role of the person completing record.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://simplifier.net/ukcore/codesystem-ukcore-sdsjobrolename", "popUpText": "", "prefix": "FHIR", "prefixDisplay": "FHIR", "text": "SDSjobrole", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>FHIR</strong> — <
+
+                    
+                      <a href="https://simplifier.net/ukcore/codesystem-ukcore-sdsjobrolename" target="_blank" rel="noopener">
+                        SDSjobrole
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Role@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-7-2"
+          data-parent-id="root-2-0-7"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Grade</div>
+          </td>
+
+          <td><div class="cell" title="The grade of the person completing the record.">The grade of the person completing the record.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Grade@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-7-3"
+          data-parent-id="root-2-0-7"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Specialty</div>
+          </td>
+
+          <td><div class="cell" title="The main specialty of the person completing the record.">The main specialty of the person completing the record.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/activity_treatment_function_code.html?hl=activity%2Ctreatment%2Cfunction%2Ccode", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Activity treatment function code", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/activity_treatment_function_code.html?hl=activity%2Ctreatment%2Cfunction%2Ccode" target="_blank" rel="noopener">
+                        Activity treatment function code
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Specialty@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-7-4"
+          data-parent-id="root-2-0-7"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Organisation</div>
+          </td>
+
+          <td><div class="cell" title="The organisation the person completing the record works for.">The organisation the person completing the record works for.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://www.datadictionary.nhs.uk/supporting_information/organisation_data_service.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Organisation data service", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://www.datadictionary.nhs.uk/supporting_information/organisation_data_service.html" target="_blank" rel="noopener">
+                        Organisation data service
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Organisation@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-7-5"
+          data-parent-id="root-2-0-7"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Professional identifier</div>
+          </td>
+
+          <td><div class="cell" title="Professional identifier for the person completing the record e.g. GMC number, HCPC number etc, or the personal identifier used by the local organisation.">Professional identifier for the person completing the record e.g. GMC number, HCPC number etc, or the personal identifier used by the local organisation.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/professional_registration_entry_identifier.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Professional registration identifier", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/professional_registration_entry_identifier.html" target="_blank" rel="noopener">
+                        Professional registration identifier
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Professional identifier@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-7-6"
+          data-parent-id="root-2-0-7"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Date completed</div>
+          </td>
+
+          <td><div class="cell" title="The date and time the record was completed.">The date and time the record was completed.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Date completed@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-7-7"
+          data-parent-id="root-2-0-7"
+          data-depth="3"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 60px;">
+            <span class="arrow"></span>
+            <div class="cell">Contact details</div>
+          </td>
+
+          <td><div class="cell" title="Contact details of the person completing the record.">Contact details of the person completing the record. <br clear="none"/> 
+                        </div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='[{"expression": "https://datadictionary.nhs.uk/data_elements/uk_telephone_number.html?hl=number", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "UK telephone number", "use": ""}]'
+            >
+              
+              
+                
+                  <div>
+                    
+					<strong>NHS Data Dictionary</strong> — <
+
+                    
+                      <a href="https://datadictionary.nhs.uk/data_elements/uk_telephone_number.html?hl=number" target="_blank" rel="noopener">
+                        UK telephone number
+                      </a>
+                    
+                    
+                  </div>
+                
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…1</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Contact details@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+        
+        
+        <tr
+          data-id="root-2-0-8"
+          data-parent-id="root-2-0"
+          data-depth="2"
+          data-has-children="false"
+          class="hidden"
+        >
+          <td class="mro">R</td>
+
+          <td class="name" style="padding-left: 40px;">
+            <span class="arrow"></span>
+            <div class="cell">Comment</div>
+          </td>
+
+          <td><div class="cell" title="Supporting text may be given covering the problem.">Supporting text may be given covering the problem.</div></td>
+
+          <!-- Value Sets: store raw as JSON (array or string) -->
+          <td>
+            <div
+              class="cell value-sets"
+              data-vs='null'
+            >
+              
+              
+            </div>
+          </td>
+
+          <td><div class="cell" title=""></div></td>
+          <td><div class="cell"></div></td>
+
+          
+          
+          <td><div class="cell"></div></td>
+          <td class="cardinality">0…*</td>
+          <td><div class="cell">PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Comment@2-build.2.1</div></td>
+        </tr>
+
+        
+      
+      
+        
+      
+      
+        
+      
+      
+      </tbody>
+
+    </table>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="viewer-modal" role="dialog" aria-modal="true" aria-labelledby="viewer-modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="viewer-modal-title">Details</h2>
+        <button class="modal-close" type="button" aria-label="Close" id="viewer-modal-close">×</button>
+      </div>
+      <div class="modal-body" id="viewer-modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+  const data = {"component_sets": [{"id": "1-build.0.1", "name": "PRSB-Standards/WRIST-PRSB-Datatypes"}, {"id": "1-build.0.1", "name": "PRSB-Standards/WRIST-IPS-Datatypes"}, {"id": "2-build.2.1", "name": "PRSB-Standards/WRIST-core-information-standard"}, {"id": "1-build.0.4", "name": "PRSB-Standards/WRIST-Problem-list"}, {"id": "1-build.0.2", "name": "PRSB-Standards/WRIST-Procedures-and-therapies"}], "concept": [{"concept": [{"concept": [], "derivedFrom": "", "description": "", "implementationGuidance": "", "informationType": "", "isComponent": false, "maximumMultiplicity": "", "minimumMultiplicity": "", "mro": "", "name": "", "valueSets": []}], "derivedFrom": "", "description": "\u003cp\u003eTest\u003c/p\u003e", "implementationGuidance": "\u003cp\u003eTest\u003c/p\u003e", "informationType": "Record", "isComponent": false, "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "M", "name": "Test", "relationshipType": "specialisation", "type": "item", "valueDomain": [{"type": "PRSB-Standards/WRIST-core-information-standard/Personal contacts@2-build.2.1"}], "valueSets": [{"expression": "", "popUpText": "\u003cp\u003eExample\u003c/p\u003e", "prefix": "SNOMED_CT", "prefixDisplay": "SNOMED CT", "text": "12346|Test", "use": "EXAM"}]}, {"concept": [{"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person first name@2-build.2.1", "description": "The first name(s) of the person. This includes middle names.", "maximumMultiplicity": "*", "minimumMultiplicity": "1", "mro": "M", "name": "Person first name", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/person_given_name.html?hl=person%2Cgiven%2Cname", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person given name", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person family name@2-build.2.1", "description": "The family name or surname of the person", "maximumMultiplicity": "*", "minimumMultiplicity": "1", "mro": "M", "name": "Person family name", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/person_family_name.html", "popUpText": "\u003cbr clear=\"none\"/\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person family name", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person preferred name@2-build.2.1", "description": "The name by which a person wishes to be addressed. The preferred name volunteered by the person or a preferred name given by PDS that the person has asked to be called by.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Person preferred name", "type": "item", "valueDomain": [{"property": [{"maxLength": "70"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/person_full_name.html?hl=person%2Cname", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person full name", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Title@2-build.2.1", "description": "Person\u0027s title", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Title", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/data_field_notes/p/pers/person_title_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person title", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person name suffix@2-build.2.1", "description": "A textual suffix that may be added to the end of a PERSON\u0027s name, for example, OBE, MBE, BSc, JP, GM", "maximumMultiplicity": "*", "minimumMultiplicity": "0", "mro": "R", "name": "Person name suffix", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/person_name_suffix.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person suffix", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name/Person full name@2-build.2.1", "description": "The full name of the person in text representation.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Person full name", "type": "item", "valueDomain": [{"property": [{"maxLength": "70"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/person_full_name.html?hl=person%2Cname", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Patient full name", "use": ""}]}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name@2-build.2.1", "description": "Details of the person\u0027s name", "maximumMultiplicity": "1", "minimumMultiplicity": "1", "mro": "M", "name": "Person name", "type": "group"}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Gender@2-build.2.1", "description": "The person\u0027s stated gender.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Gender", "type": "item", "valueDomain": [{"property": [{"maxLength": "1"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/person_stated_gender_code.html?hl=person%2Cstated%2Cgender%2Ccode", "popUpText": "\u003cbr clear=\"none\"/\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person stated gender code", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Ethnicity@2-build.2.1", "description": "The ethnicity of the person as specified by the person.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Ethnicity", "type": "item", "valueDomain": [{"property": [{"maxLength": "2"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/ethnic_category.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Ethnic category", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Religion@2-build.2.1", "description": "The religious affiliation as specified by the person.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Religion", "type": "item", "valueSets": [{"expression": "https://termbrowser.nhs.uk/?perspective=full\u0026conceptId1=999000531000000100\u0026edition=uk-edition\u0026server=https://termbrowser.nhs.uk/sct-browser-api/snomed\u0026langRefset=999001261000000100,999000691000001104", "popUpText": "\u003cbr clear=\"none\"/\u003e\n                    \u003c/div\u003e", "prefix": "SNOMED_CT", "prefixDisplay": "SNOMED CT", "text": "Religion", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Sex@2-build.2.1", "description": "The person\u2019s phenotypic sex. Determines how the person will be treated clinically.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "name": "Sex", "type": "item", "valueDomain": [{"property": [{"maxLength": "1"}], "type": "string"}], "valueSets": [{"expression": "https://www.datadictionary.nhs.uk/data_elements/person_phenotypic_sex.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "person phenotypic sex", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/NHS number@2-build.2.1", "description": "The unique identifier for a person within the NHS in England and Wales.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "NHS number", "type": "item", "valueDomain": [{"property": [{"maxLength": "10"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/nhs_number.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "NHS number", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/NHS number status indicator@2-build.2.1", "description": "Provides an indication of the reliability of an NHS Number.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "NHS number status indicator", "type": "item", "valueDomain": [{"property": [{"maxLength": "2"}], "type": "string"}], "valueSets": [{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/attributes/n/nhs/nhs_number_status_indicator_code_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "NHS number status indicator", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Other identifier@2-build.2.1", "description": "Country specific or local identifier, e.g. Community Health Index (CHI) in Scotland.", "maximumMultiplicity": "*", "minimumMultiplicity": "0", "mro": "R", "name": "Other identifier", "type": "item", "valueDomain": [{"property": [{"maxLength": "20"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/local_patient_identifier__extended_.html?hl=local%2Cpatient%2Cidentifier%2Cextended", "popUpText": ", \u003ca class=\"\" href=\"https://datadictionary.nhs.uk/data_elements/health_and_care_number.html\" target=\"\" title=\"\"\u003eHealth and care number (NI only)\u003c/a\u003e,\u00a0\u003ca class=\"\" href=\"https://datadictionary.nhs.uk/data_elements/community_health_index_number.html\" target=\"\" title=\"\"\u003eCommunity health index number\u003c/a\u003e\u00a0(Scotland only)\u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Local patient identifier(extended)", "use": ""}]}, {"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s address/Address line 1@2-build.2.1", "description": "Person\u0027s first line of address.", "maximumMultiplicity": "1", "minimumMultiplicity": "1", "mro": "M", "name": "Address line 1", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e\n                        \u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 1", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s address/Address line 2@2-build.2.1", "description": "Person\u0027s second line of address.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Address line 2", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e\n                        \u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 2", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s address/Address line 3@2-build.2.1", "description": "Person\u0027s third line of address.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Address line 3", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 3", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s address/Address line 4@2-build.2.1", "description": "Person\u0027s fourth line of address.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Address line 4", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e\n                        \u003c/div\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 4", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s address/Address line 5@2-build.2.1", "description": "Person\u0027s fifth line of address.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Address line 5", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/patient_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address line 5", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s address/Postcode@2-build.2.1", "description": "The person\u0027s postcode.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Postcode", "type": "item", "valueDomain": [{"property": [{"maxLength": "8"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/postcode_of_usual_address.html", "popUpText": "\u003cbr clear=\"none\"/\u003e", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Postcode of usual address", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s address/Address type@2-build.2.1", "description": "The type of address e.g. Main address, Temp address", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Address type", "type": "item", "valueDomain": [{"property": [{"maxLength": "1"}], "type": "string"}], "valueSets": [{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/attributes/a/add/address_association_type_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Address association type", "use": ""}]}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s address@2-build.2.1", "description": "Person\u2019s usual place of residence, and where relevant temporary and correspondence addresses.", "maximumMultiplicity": "*", "minimumMultiplicity": "1", "mro": "M", "name": "Person\u0027s address", "type": "group"}, {"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Preferred contact method@2-build.2.1", "description": "Preferred contact method, e.g. email, letter, phone, text message etc.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Preferred contact method", "type": "item", "valueDomain": [{"property": [{"maxLength": "1"}], "type": "string"}], "valueSets": [{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/attributes/c/com/communication_contact_method_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Communication contact method", "use": ""}]}, {"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Person\u0027s telephone number details/Person\u0027s telephone number@2-build.2.1", "description": "The person\u0027s telephone number", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Person\u0027s telephone number", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/uk_telephone_number.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "UK telephone number", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Person\u0027s telephone number details/Person\u0027s telephone number type@2-build.2.1", "description": "The contact type e.g. home, mobile", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Person\u0027s telephone number type", "type": "item", "valueDomain": [{"example": [{"#text": "Home", "type": "valid"}, {"#text": "Mobile", "type": "valid"}, {"#text": "Temp", "type": "valid"}, {"#text": "Old", "type": "valid"}, {"#text": "Work", "type": "valid"}], "property": [{"maxLength": "6"}], "type": "string"}], "valueSets": [{"expression": "http://hl7.org/fhir/stu3/codesystem-contact-point-use.html", "popUpText": "", "prefix": "FHIR", "prefixDisplay": "FHIR", "text": "Contact point use", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Person\u0027s telephone number details/Preference of telephone number@2-build.2.1", "description": "The preferred order of use for the telephone number", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Preference of telephone number", "type": "item", "valueSets": []}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Person\u0027s telephone number details@2-build.2.1", "description": "The person\u0027s telephone number details", "maximumMultiplicity": "*", "minimumMultiplicity": "0", "mro": "R", "name": "Person\u0027s telephone number details", "type": "group"}, {"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Person\u0027s email address details/Person\u0027s email address@2-build.2.1", "description": "Email address of the person.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Person\u0027s email address", "type": "item", "valueDomain": [{"property": [{"maxLength": "255"}], "type": "string"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Person\u0027s email address details/Person\u0027s email address type@2-build.2.1", "description": "The type of email address, home, work", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Person\u0027s email address type", "type": "item", "valueDomain": [{"example": [{"#text": "Home", "type": "valid"}, {"#text": "Work", "type": "valid"}, {"#text": "old", "type": "valid"}], "property": [{"maxLength": "6"}], "type": "string"}], "valueSets": [{"expression": "http://hl7.org/fhir/stu3/codesystem-contact-point-use.html", "popUpText": "", "prefix": "FHIR", "prefixDisplay": "FHIR", "text": "Contact point use", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Person\u0027s email address details/Preference of email address@2-build.2.1", "description": "The preferred order of use of email address", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Preference of email address", "type": "item", "valueSets": []}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Person\u0027s email address details@2-build.2.1", "description": "Details of the person\u0027s email address", "maximumMultiplicity": "*", "minimumMultiplicity": "0", "mro": "R", "name": "Person\u0027s email address details", "type": "group"}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details/Other contact information@2-build.2.1", "description": "Contact details via fax, sms, url", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Other contact information", "type": "item", "valueDomain": [{"property": [{"maxLength": "255"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/attributes/communication_contact_string.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Communication contact string", "use": ""}]}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person\u0027s contact details@2-build.2.1", "description": "Details of the person\u0027s contact information.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Person\u0027s contact details", "type": "group"}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Photograph@2-build.2.1", "description": "A photograph of the person for identification and to show what the person looks like normally.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Photograph", "type": "item", "valueDomain": [{"type": "identifier"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Place of birth@2-build.2.1", "description": "The country of birth of the person.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "name": "Place of birth", "type": "item", "valueDomain": [{"property": [{"maxLength": "3"}], "type": "string"}], "valueSets": [{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/attributes/c/cou/country_code_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Country code (birth)", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Marital status@2-build.2.1", "description": "An indicator to identify the legal marital status of the person.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "name": "Marital status", "type": "item", "valueDomain": [{"property": [{"maxLength": "1"}], "type": "string"}], "valueSets": [{"expression": "https://www.datadictionary.nhs.uk/data_elements/person_marital_status.html?hl=marital%2Cstatus", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Person marital status", "use": ""}]}, {"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status/Immigration status@2-build.2.1", "description": "Details of the immigration status of the person, their permissions to live and receive care and support in the UK e.g. asylum seeker, indefinite leave to remain in the UK.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Immigration status", "type": "item", "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status/Start date@2-build.2.1", "description": "Start date of immigration status", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Start date", "type": "item", "valueDomain": [{"property": [{"timeStampPrecision": "YMDHM"}], "type": "datetime"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status/End date@2-build.2.1", "description": "End date of immigration status", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "End date", "type": "item", "valueDomain": [{"property": [{"timeStampPrecision": "YMDHM"}], "type": "datetime"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status/Comment@2-build.2.1", "description": "Relevant comments about the person\u0027s immigration status", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Comment", "type": "item", "valueDomain": [{"property": [{"maxLength": "150"}], "type": "text"}], "valueSets": []}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Immigration status@2-build.2.1", "description": "Include details of the immigration status of the person, their permissions to live and receive care and support in the UK e.g. asylum seeker, indefinite leave to remain in the UK. Include start date, end date and any comments.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Immigration status", "type": "group"}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Organ and tissue donation@2-build.2.1", "description": "Whether the person has given consent for organ and/or tissue donation or opted out of automatic donation where applicable. This is information provided by the national register.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Organ and tissue donation", "type": "item", "valueDomain": [{"type": "boolean"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Overseas visitor status@2-build.2.1", "description": "The charging category relating to an overseas visitor.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Overseas visitor status", "type": "item", "valueDomain": [{"property": [{"maxLength": "1"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/overseas_visitor_charging_category.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Overseas visitor charging catergory", "use": ""}]}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics@2-build.2.1", "description": "\u003cp\u003eThe person\u0027s details and contact information.\u003c/p\u003e", "implementationGuidance": "\u003cp\u003eThe mandatory information in this section is person\u2019s name, date of birth and address. There can be multiple addresses associated with a person including temporary and correspondence addresses. These are stored on the PDS. \u003c/p\u003e\u003cp\u003e\u003cbr\u003e\u003c/p\u003e\u003cp\u003e Note that the Individual requirements section includes specific elements for accessible information requirements to support communication. It is recognised that some of the elements in this section are currently shared in a more granular way than currently defined in this information model. PRSB intends to address this in a later release of the information model.\u003c/p\u003e", "informationType": "", "isComponent": true, "maximumMultiplicity": "1", "minimumMultiplicity": "1", "mro": "M", "name": "Person demographics", "relationshipType": "neither", "type": "group", "valueDomain": [{"type": ""}], "valueSets": []}, {"concept": [{"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Date@2-build.2.1", "description": "The date the problem was identified.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Date", "type": "item", "valueDomain": [{"property": [{"timeStampPrecision": "YMDHM"}], "type": "datetime"}], "valueSets": []}, {"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Name@2-build.2.1", "description": "The name of the professional.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Name", "type": "item", "valueDomain": [{"property": [{"maxLength": "70"}], "type": "string"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Role@2-build.2.1", "description": "The role the professional has in relation to the person e.g. GP, physiotherapist, community nurse, social worker etc", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Role", "type": "item", "valueSets": [{"expression": "https://simplifier.net/ukcore/codesystem-ukcore-sdsjobrolename", "popUpText": "", "prefix": "FHIR", "prefixDisplay": "FHIR", "text": "SDSjobroletype", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Grade@2-build.2.1", "description": "The grade of the professional.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Grade", "type": "item", "valueDomain": [{"property": [{"maxLength": "150"}], "type": "text"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Speciality@2-build.2.1", "description": "The specialty of the professional e.g. physiotherapy, oncology, mental health etc", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Speciality", "type": "item", "valueDomain": [{"property": [{"maxLength": "3"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/activity_treatment_function_code.html?hl=activity%2Ctreatment%2Cfunction%2Ccode", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Activity treatment function code", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Professional identifier@2-build.2.1", "description": "Professional identifier for the professional e.g. GMC number, HCPC number etc or the personal identifier used by the local organisation.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Professional identifier", "type": "item", "valueDomain": [{"property": [{"maxLength": "32"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/professional_registration_entry_identifier.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Professional registration identifier", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Organisation@2-build.2.1", "description": "The name of the organisation the professional works for.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Organisation", "type": "group"}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional/Contact details@2-build.2.1", "description": "Contact details of the professional", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Contact details", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/uk_telephone_number.html?hl=number", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "UK phone number", "use": ""}]}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Performing professional@2-build.2.1", "description": "The professional who identified the problem.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Performing professional", "type": "group"}, {"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Location/Coded value@2-build.2.1", "description": "The coded value for location.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Coded value", "type": "item", "valueDomain": [{"property": [{"maxLength": "5", "minLength": "3"}], "type": "string"}], "valueSets": [{"expression": "https://www.datadictionary.nhs.uk/data_dictionary/nhs_business_definitions/o/organisation_data_service_de.asp?shownav=1", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Organisation data service code", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Location/Free text@2-build.2.1", "description": "Free text field to be used if no code is available", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Free text", "type": "item", "valueDomain": [{"property": [{"maxLength": "150"}], "type": "text"}], "valueSets": []}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Location@2-build.2.1", "description": "The location the problem was identified.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Location", "type": "group"}, {"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Problem/Coded value@2-build.2.1", "description": "The coded value for the problem list.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Coded value", "type": "item", "valueSets": [{"expression": "https://termbrowser.nhs.uk/?perspective=full\u0026conceptId1=1127581000000103\u0026edition=uk-edition\u0026release=\u0026server=https://termbrowser.nhs.uk/sct-browser-api/snomed\u0026langRefset=999001261000000100,999000691000001104", "popUpText": "", "prefix": "SNOMED_CT", "prefixDisplay": "SNOMED CT", "text": "^1127581000000103 |Health issues simple reference set|", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Problem/Free text@2-build.2.1", "description": "Free text field to be used if no code is available", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Free text", "type": "item", "valueDomain": [{"property": [{"maxLength": "150"}], "type": "text"}], "valueSets": []}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Problem@2-build.2.1", "description": "A condition which needs addressing and so is important for every professional to know about when seeing the person.  \u003cbr clear=\"none\"/\u003e \n                         \u003cbr clear=\"none\"/\u003e Problems may include diagnoses, symptoms, disabilities and social or behavioural issues", "maximumMultiplicity": "1", "minimumMultiplicity": "1", "mro": "M", "name": "Problem", "type": "group"}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Onset date@2-build.2.1", "description": "A date or estimated date that the problem began", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Onset date", "type": "item", "valueDomain": [{"property": [{"timeStampPrecision": "YM"}], "type": "datetime"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/End Date@2-build.2.1", "description": "The date or estimated date the problem was resolved.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "End Date", "type": "item", "valueDomain": [{"property": [{"timeStampPrecision": "YMDHM"}], "type": "datetime"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Stage of disease@2-build.2.1", "description": "The stage of the disease where relevant.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Stage of disease", "type": "item", "valueDomain": [{"property": [{"maxLength": "150"}], "type": "text"}], "valueSets": []}, {"concept": [{"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Name@2-build.2.1", "description": "The name of the person completing the record.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Name", "type": "item", "valueDomain": [{"property": [{"maxLength": "70"}], "type": "string"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Role@2-build.2.1", "description": "The organisational role of the person completing record.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Role", "type": "item", "valueSets": [{"expression": "https://simplifier.net/ukcore/codesystem-ukcore-sdsjobrolename", "popUpText": "", "prefix": "FHIR", "prefixDisplay": "FHIR", "text": "SDSjobrole", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Grade@2-build.2.1", "description": "The grade of the person completing the record.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Grade", "type": "item", "valueDomain": [{"property": [{"maxLength": "150"}], "type": "text"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Specialty@2-build.2.1", "description": "The main specialty of the person completing the record.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Specialty", "type": "item", "valueDomain": [{"property": [{"maxLength": "3"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/activity_treatment_function_code.html?hl=activity%2Ctreatment%2Cfunction%2Ccode", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Activity treatment function code", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Organisation@2-build.2.1", "description": "The organisation the person completing the record works for.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Organisation", "type": "group", "valueSets": [{"expression": "https://www.datadictionary.nhs.uk/supporting_information/organisation_data_service.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Organisation data service", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Professional identifier@2-build.2.1", "description": "Professional identifier for the person completing the record e.g. GMC number, HCPC number etc, or the personal identifier used by the local organisation.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Professional identifier", "type": "item", "valueDomain": [{"property": [{"maxLength": "32"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/professional_registration_entry_identifier.html", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "Professional registration identifier", "use": ""}]}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Date completed@2-build.2.1", "description": "The date and time the record was completed.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Date completed", "type": "item", "valueDomain": [{"property": [{"timeStampPrecision": "YMDHM"}], "type": "datetime"}], "valueSets": []}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record/Contact details@2-build.2.1", "description": "Contact details of the person completing the record. \u003cbr clear=\"none\"/\u003e \n                        ", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Contact details", "type": "item", "valueDomain": [{"property": [{"maxLength": "35"}], "type": "string"}], "valueSets": [{"expression": "https://datadictionary.nhs.uk/data_elements/uk_telephone_number.html?hl=number", "popUpText": "", "prefix": "NHS_DD", "prefixDisplay": "NHS Data Dictionary", "text": "UK telephone number", "use": ""}]}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Person completing record@2-build.2.1", "description": "Details of the person completing the record.", "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Person completing record", "type": "group"}, {"derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry/Comment@2-build.2.1", "description": "Supporting text may be given covering the problem.", "maximumMultiplicity": "*", "minimumMultiplicity": "0", "mro": "R", "name": "Comment", "type": "item", "valueDomain": [{"property": [{"maxLength": "150"}], "type": "text"}], "valueSets": []}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list/Problem list record entry@2-build.2.1", "description": "This is a problem list record entry.  \u003cbr clear=\"none\"/\u003e \n                     \u003cbr clear=\"none\"/\u003e There may be 0 to many record entries under problem list.  \u003cbr clear=\"none\"/\u003e \n                     \u003cbr clear=\"none\"/\u003e Each record entry is made up of a number of elements or data items.", "maximumMultiplicity": "*", "minimumMultiplicity": "0", "mro": "R", "name": "Problem list record entry", "type": "group"}], "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Problem list@2-build.2.1", "description": "\u003cp\u003eA summary of the problems that require investigation or treatment.\u003c/p\u003e", "implementationGuidance": "\u003cp\u003e\u003cbr\u003e\u003c/p\u003e", "informationType": "", "isComponent": true, "maximumMultiplicity": "1", "minimumMultiplicity": "0", "mro": "R", "name": "Problem list", "relationshipType": "neither", "type": "group", "valueSets": []}], "description": "\u003cp\u003e\u003cbr\u003e\u003c/p\u003e", "name": "Test-Demo", "ui": {"viewer": {"columnWidths": {"cardinality": 120, "data_type": 140, "derived_from": 220, "description": 688, "implementation_guidance": 447, "information_type": 235, "mro": 80, "name": 159, "value_sets": 283}}}, "version": "1-build.0.0"};
+  
+  document.addEventListener('DOMContentLoaded', () => {
+    /* ---------- Tree expand/collapse ---------- */
+    const rows = () => Array.from(document.querySelectorAll('tr[data-id]'));
+
+    function toggleRows(pid, show) {
+      rows().forEach(r => {
+        if (r.getAttribute('data-parent-id') === pid) {
+          r.classList.toggle('hidden', !show);
+          if (!show) {
+            r.classList.remove('expanded');
+            toggleRows(r.getAttribute('data-id'), false);
+          } else {
+            // Children just became visible: enhance them after layout paints
+            requestAnimationFrame(() => {
+              addReadMoreLinksInRow(r);
+              if (r.classList.contains('expanded')) toggleRows(r.getAttribute('data-id'), true);
+            });
+          }
+        }
+      });
+    }
+
+    rows()
+      .filter(r => r.getAttribute('data-has-children') === 'true')
+      .forEach(r => {
+        r.classList.add('clickable');
+        r.addEventListener('click', e => {
+          const clickedCell = e.target.closest('td');
+          if (!clickedCell) return;
+          if (e.target.closest('.read-more')) return; // don't toggle when clicking "Read more"
+
+          const id = r.getAttribute('data-id');
+          const expanded = r.classList.toggle('expanded');
+          toggleRows(id, expanded);
+        });
+      });
+
+    /* ---------- Value Sets parsing/render ---------- */
+    function htmlUnescape(s){ const t=document.createElement("textarea"); t.innerHTML=String(s??""); return t.value; }
+    function stripTags(s){ return String(s??"").replace(/<[^>]*>/g,""); }
+    function cleanLabelPrefix(s){ return String(s??"").replace(/\s*[:\-–—,]+\s*$/g,"").trim(); }
+
+    // Legacy HTML parser (kept for old repos)
+    function parseValueSetsHTML(input){
+      if(!input) return [];
+      let html = htmlUnescape(String(input)).replace(/\\"/g,'"');
+      html = html.replace(/<\/(div|p)>/gi,"\n").replace(/<br\s*\/?>/gi,"\n");
+      const segments = html.split("\n").map(s=>s.trim()).filter(Boolean);
+      const items = [];
+      for(const seg of segments){
+        const box=document.createElement("div"); box.innerHTML=seg;
+        const anchors=[...box.querySelectorAll("a")];
+        if(!anchors.length){
+          const only = cleanLabelPrefix(stripTags(seg));
+          if(only) items.push({label:only,url:"",text:""});
+          continue;
+        }
+        const firstAnchorIdx = seg.search(/<a\b/i);
+        const prefix = firstAnchorIdx>=0 ? cleanLabelPrefix(stripTags(seg.slice(0, firstAnchorIdx))) : "";
+        for(const a of anchors){
+          const url=(a.getAttribute("href")||"").trim();
+          const text=(a.textContent||"").trim();
+          items.push({label:prefix,url,text});
+        }
+      }
+      return items;
+    }
+
+    function esc(s){ return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+    // very small sanitizer: remove script/style + on* handlers; safe links
+    function sanitizeHtmlBasic(html){
+      const box=document.createElement("div"); box.innerHTML=String(html||"");
+      box.querySelectorAll("script,style").forEach(n=>n.remove());
+      box.querySelectorAll("*").forEach(el=>{
+        [...el.attributes].forEach(a=>{ if(/^on/i.test(a.name)) el.removeAttribute(a.name); });
+        if(el.tagName.toLowerCase()==="a"){
+          const href=el.getAttribute("href")||"";
+          if(/^\s*javascript:|^\s*data:/i.test(href)) el.removeAttribute("href");
+          el.setAttribute("rel","noopener"); if(!el.getAttribute("target")) el.setAttribute("target","_blank");
+        }
+      });
+      return box.innerHTML;
+    }
+
+    function renderValueSetsCell(cellEl){
+      // read raw from data attribute (array or string)
+      let vsRaw; try{ vsRaw = JSON.parse(cellEl.dataset.vs || "null"); }catch{ vsRaw = null; }
+
+      if(Array.isArray(vsRaw)){
+        if(!vsRaw.length){ cellEl.textContent=""; return; }
+        const html = vsRaw.map(v=>{
+          const shown  = v.prefixDisplay || (window.PREFIX_DISPLAY_MAP?.[v.prefix] || v.prefix);
+			const prefix = shown ? `<strong>${esc(String(shown).replace(/\s*[:\-—]\s*$/,""))}</strong> — ` : "";
+          const label  = v.text ? esc(v.text) : esc(v.expression||"");
+          const href   = v.expression ? ` href="${esc(v.expression)}" target="_blank" rel="noopener"` : "";
+          const link   = `<a${href}>${label}</a>`;
+          const use    = v.use ? ` <span class="use-badge">${esc(v.use)}</span>` : "";
+          const pop    = v.popUpText ? `<div style="margin:6px 0 0 18px;padding-left:10px;border-left:3px solid #e5e7eb;">${sanitizeHtmlBasic(v.popUpText)}</div>` : "";
+          return `<div style="margin:6px 0 10px;">${prefix}${link}${use}${pop}</div>`;
+        }).join("");
+        cellEl.innerHTML = `<div class="vs-view">${html}</div>`;
+        return;
+      }
+
+      // Legacy string fallback
+      const raw = cellEl.innerHTML || cellEl.textContent || "";
+      const items = parseValueSetsHTML(raw);
+      if(items.length){
+        cellEl.innerHTML =
+          '<ul class="vs-list">' +
+          items.map(it=>{
+            const label = it.label ? `<strong>${esc(it.label)}</strong>` : '';
+            const link  = it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.text || it.url)}</a>` : esc(it.text || '');
+            return `<li>${label && link ? `${label} — ${link}` : (label || link)}</li>`;
+          }).join('') +
+          '</ul>';
+      }else{
+        cellEl.textContent = stripTags(htmlUnescape(raw)).trim();
+      }
+    }
+
+    function renderValueSetsColumn(){
+      document.querySelectorAll('.value-sets.cell, .value-sets .cell').forEach(renderValueSetsCell);
+    }
+
+    /* ---------- Modal ---------- */
+    const overlay    = document.getElementById('viewer-modal');
+    const modalBody  = document.getElementById('viewer-modal-body');
+    const modalTitle = document.getElementById('viewer-modal-title');
+    const modalClose = document.getElementById('viewer-modal-close');
+
+    function openModal(title, html) {
+      modalTitle.textContent = title || 'Details';
+      modalBody.innerHTML = html || '';
+      overlay.classList.add('show');
+      modalClose.focus();
+    }
+    function closeModal() {
+      overlay.classList.remove('show');
+      modalBody.innerHTML = '';
+    }
+    modalClose.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('show')) closeModal(); });
+
+    /* ---------- Read-more: adaptive + recursive ---------- */
+    function headerKeys() {
+      return Array.from(document.querySelectorAll('thead th')).map(th => th.dataset.col || '');
+    }
+
+    function ensureReadMoreForCell(td, cell, depth, colKey) {
+      const old = td.querySelector('.read-more');
+      if (old) old.remove();
+
+      const truncated = cell.scrollHeight > cell.clientHeight + 1;
+      if (!truncated) return;
+
+      const link = document.createElement('a');
+      link.href = '#';
+      link.className = 'read-more ' + (depth === 0 ? 'dark' : 'light');
+      link.textContent = 'Read more';
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const title = (colKey || 'Details').replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+        openModal(title, cell.innerHTML);
+      });
+      td.appendChild(link);
+    }
+
+    function addReadMoreLinksInRow(tr) {
+      if (tr.classList.contains('hidden')) return;
+      const depth = Number(tr.getAttribute('data-depth') || 0);
+      const keys = headerKeys();
+
+      Array.from(tr.children).forEach((td, idx) => {
+        const cell = td.querySelector('.cell') || td;
+        requestAnimationFrame(() => ensureReadMoreForCell(td, cell, depth, keys[idx]));
+      });
+    }
+
+    function refreshReadMoreAll() {
+      rows().forEach(addReadMoreLinksInRow);
+    }
+
+    /* ---------- Run sequence ---------- */
+    renderValueSetsColumn();          // build Value Sets
+    requestAnimationFrame(refreshReadMoreAll); // add "Read more" for visible rows
+
+    // Recompute on resize—layout width changes can affect truncation
+    window.addEventListener('resize', () => {
+      requestAnimationFrame(refreshReadMoreAll);
+    });
+  });
+  
+  </script>
+
+</body>
+</html>
