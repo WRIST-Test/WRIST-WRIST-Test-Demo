@@ -186,26 +186,6 @@
           "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Person name@2-build.2.1"
         },
         {
-          "description": "The date of birth of the person.",
-          "maximumMultiplicity": "1",
-          "minimumMultiplicity": "1",
-          "mro": "M",
-          "name": "Date of birth",
-          "type": "item",
-          "valueDomain": [
-            {
-              "property": [
-                {
-                  "timeStampPrecision": "YMD!"
-                }
-              ],
-              "type": "date"
-            }
-          ],
-          "valueSets": "NHS data dictionary:-  <a href=\"https://datadictionary.nhs.uk/data_elements/person_birth_date.html?hl=person%2Cbirth%2Cdate\" target=\"\" title=\"\">Person birth date</a> \n                ",
-          "derivedFrom": "PRSB-Standards/WRIST-core-information-standard/Person demographics/Date of birth@2-build.2.1"
-        },
-        {
           "description": "The person's stated gender.",
           "maximumMultiplicity": "1",
           "minimumMultiplicity": "0",
